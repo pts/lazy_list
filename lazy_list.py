@@ -14,7 +14,7 @@ class _LazyListData(object):
         raise TypeError
     else:
       self._itr = iter(itr)
-      if not isinstance(lst, list):
+      if not isinstance(lst, list):  # Reject tuple, need to append later.
         raise TypeError
     self._lst = lst
 
@@ -54,13 +54,44 @@ class LazyList(object):
     elif isinstance(other, LazyList):
       self._data = other._data
       self._base += other._base
-    # TODO(pts): Allow iterator as other.
+    else:
+      other = iter(other)  # Raises a TypeError if not iterable.
+      self._data = _LazyListData([], other)
 
   def __getitem__(self, i):
     data = self._data
-    if not isinstance(i, int):
-      raise TypeError
     base = self._base
+    if isinstance(i, slice):
+      if i.step not in (1, None):
+        raise ValueError
+      start = i.start
+      if start is None:
+        start = 0
+      elif not isinstance(start, int):
+        raise TypeError
+      if start < 0:
+        start = max(0, len(self) + start)  # Can be slow or infinite.
+      stop = i.stop
+      if stop is None:
+        if start:
+          return type(self)(self._data, start + base)
+        else:
+          return self
+      size = len(self)  # Can be slow or infinite.
+      if stop < 0:
+        stop = max(0, size + stop)
+      if stop > size:
+        stop = size
+      if start > stop:
+        start = stop
+      if not start and stop == size:  # Unchanged.
+        return self
+      elif start == stop:
+        return type(self)()  # Empty.
+      else:
+        return type(self)(self._data._lst[start + base : stop + base])
+    elif not isinstance(i, int):
+      raise TypeError
     if i < 0:
       i = len(data) + i  # len(data) can be slow (or infinite).
       if i < base:
@@ -91,4 +122,16 @@ if __name__ == '__main__':
   print list(LazyList(LazyList(d, 1), 2))
   print LazyList(d, 2)[-1]
   print LazyList(d, 2)[-3]
+  print list(LazyList(d)[: 4])
+  print list(LazyList(d)[2 : 4])
+  print list(LazyList(d, 3)[-20 : 4])
+  print list(LazyList(d, 1)[2 : 4])
+  print list(LazyList(d, 2)[-2 : 4])
+  print list(LazyList(d, 3)[-2 : 4])
+  print list(LazyList(d, 4)[-2 : 4])
   #print LazyList(d, 2)[-4]  #: IndexError
+  print bool(LazyList(d)[20:])
+  print bool(LazyList(d)[2:])
+  print bool(LazyList(d)[4:])
+  print bool(LazyList(d)[5:])
+  print list(LazyList(xrange(10, 30, 4), 1))
