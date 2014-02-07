@@ -4,59 +4,66 @@
 class _LazyListData(object):
   __slots__ = ('_lst', '_itr')
 
-  def __init__(self, lst=[], itr=()):
-    if itr is ():
-      self._itr = ()
-      # isinstance(lst, _LazyListData) is explicitly dissallowed, for simple
-      # copy semantics.
-      # TODO(pts): Allow an iterator here.
-      if not isinstance(lst, (list, tuple)):
+  def __init__(self, *args):  # Only the last arg is lazy.
+    # isinstance(args[...], _LazyListData) is explicitly dissallowed, to avoid
+    # sproblems from shallow copy of iterators within.
+    for x in args:
+      if isinstance(x, _LazyListData):
         raise TypeError
+    if args:
+      if isinstance(args[-1], (list, tuple)):
+        self._itr = ()
+      else:
+        args = list(args)  # Convert from tuple.
+        self._itr = iter(args.pop())  # Raises TypeError if not iterable.
+      self._lst = lst = []
+      for x in args:
+        lst.extend(x)
     else:
-      self._itr = iter(itr)
-      if not isinstance(lst, list):  # Reject tuple, need to append later.
-        raise TypeError
-    self._lst = lst
+      self._lst = self._itr = ()
 
   def __getitem__(self, i):
     if not isinstance(i, int):
       raise TypeError
     if i < 0:
-      raise IndexError
+      i += len(self)  # Can be slow or infinite.
+      if i < 0:
+        raise IndexError
     lst = self._lst
     if i < len(lst):
       return lst[i]
-    for x in self._itr:
-      lst.append(x)
-      if i < len(lst):
-        return lst[i]
-    self._itr = ()
+    if self._itr is not ():  # `if 1:' would also work, but that's slower.
+      for x in self._itr:
+        lst.append(x)
+        if i < len(lst):
+          return lst[i]
+      self._itr = ()
     raise IndexError
 
   def __len__(self):
-    if self._itr is not ():  # This `if' is just a speed optimization.
+    if self._itr is not ():  # `if 1:' would also work, but that's slower.
       self._lst.extend(self._itr)  # This can be infinite.
       self._itr = ()
     return len(self._lst)
+
+  # Python will make iter(_LazyListData(...)) work because __getitem__ is
+  # defined.
 
 
 class LazyList(object):
   __slots__ = ('_data', '_base')
 
   def __init__(self, other=(), base_delta=0):
-    self._base = base_delta = int(base_delta)
+    if not isinstance(base_delta, int):
+      raise TypeError
     if base_delta < 0:
       raise ValueError
-    if isinstance(other, (list, tuple)):
-      self._data = _LazyListData(other)
-    elif isinstance(other, _LazyListData):
-      self._data = other
-    elif isinstance(other, LazyList):
+    if isinstance(other, LazyList):
       self._data = other._data
-      self._base += other._base
+      self._base = other._base + base_delta
     else:
-      other = iter(other)  # Raises a TypeError if not iterable.
-      self._data = _LazyListData([], other)
+      self._data = _LazyListData(other)
+      self._base = base_delta
 
   def __getitem__(self, i):
     data = self._data
@@ -74,7 +81,7 @@ class LazyList(object):
       stop = i.stop
       if stop is None:
         if start:
-          return type(self)(self._data, start + base)
+          return type(self)(self, start)
         else:
           return self
       size = len(self)  # Can be slow or infinite.
@@ -109,29 +116,30 @@ class LazyList(object):
 
 if __name__ == '__main__':
   d = _LazyListData([], xrange(10, 30, 4))
-  #print len(d)
-  #print list(d)
-  #print list(iter(d))  # Python autogenerates the iterator from __getitem__.
   print d._itr
-  print len(LazyList(d, 2))
+  print len(d)
   print d._itr
-  print list(LazyList(d, 2))
-  print d._itr
-  print list(LazyList(d, 1))
-  print list(LazyList(d, 0))
-  print list(LazyList(LazyList(d, 1), 2))
-  print LazyList(d, 2)[-1]
-  print LazyList(d, 2)[-3]
-  print list(LazyList(d)[: 4])
-  print list(LazyList(d)[2 : 4])
-  print list(LazyList(d, 3)[-20 : 4])
-  print list(LazyList(d, 1)[2 : 4])
-  print list(LazyList(d, 2)[-2 : 4])
-  print list(LazyList(d, 3)[-2 : 4])
-  print list(LazyList(d, 4)[-2 : 4])
-  #print LazyList(d, 2)[-4]  #: IndexError
-  print bool(LazyList(d)[20:])
-  print bool(LazyList(d)[2:])
-  print bool(LazyList(d)[4:])
-  print bool(LazyList(d)[5:])
+  print list(d)
+  print list(iter(d))  # Python autogenerates the iterator from __getitem__.
+  e = LazyList(xrange(10, 30, 4), 0)
+  print len(LazyList(e, 2))
+  print list(LazyList(e, 2))
+  print list(LazyList(e, 1))
+  print list(LazyList(e, 0))
+  print list(LazyList(LazyList(e, 1), 2))
+  print LazyList(e, 2)[-1]
+  print LazyList(e, 2)[-3]
+  print list(LazyList(e)[: 4])
+  print list(LazyList(e)[2 : 4])
+  print list(LazyList(e, 3)[-20 : 4])
+  print list(LazyList(e, 1)[2 : 4])
+  print list(LazyList(e, 2)[-2 : 4])
+  print list(LazyList(e, 3)[-2 : 4])
+  print list(LazyList(e, 4)[-2 : 4])
+  #print LazyList(e, 2)[-4]  #: IndexError
+  print bool(LazyList(e)[20:])
+  print bool(LazyList(e)[2:])
+  print bool(LazyList(e)[4:])
+  print bool(LazyList(e)[5:])
   print list(LazyList(xrange(10, 30, 4), 1))
+  print list(LazyList(range(10, 30, 4), 1))
