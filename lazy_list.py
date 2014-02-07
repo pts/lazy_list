@@ -88,3 +88,7 @@ if __name__ == '__main__':
   print d._itr
   print list(LazyList(d, 1))
   print list(LazyList(d, 0))
+  print list(LazyList(LazyList(d, 1), 2))
+  print LazyList(d, 2)[-1]
+  print LazyList(d, 2)[-3]
+  #print LazyList(d, 2)[-4]  #: IndexError
